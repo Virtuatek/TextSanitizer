@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DB-Import Text-Sanitizer (Standalone)</title>
+  <style>
+    :root {
+      --bg-main: #0f172a;
+      --bg-card: #1e293b;
+      --bg-dark: #020617;
+      --border: #334155;
+      --text-main: #f1f5f9;
+      --text-muted: #94a3b8;
+      --accent: #2563eb;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 24px;
+      background-color: var(--bg-main); color: var(--text-main);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      font-size: 14px; line-height: 1.5;
+    }
+    .container { max-width: 1280px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+    .header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 16px; gap: 12px; }
+    .title { font-size: 22px; font-weight: 700; margin: 0; display: flex; align-items: center; gap: 10px; }
+    .status-dot { width: 10px; height: 10px; border-radius: 50%; background-color: #ef4444; display: inline-block; }
+    .status-dot.ready { background-color: #10b981; box-shadow: 0 0 8px #10b981; }
+    .subtitle { color: var(--text-muted); font-size: 13px; margin: 4px 0 0 0; }
+    .btn-group { display: flex; flex-wrap: wrap; gap: 8px; }
+    button {
+      padding: 8px 14px; border-radius: 6px; font-size: 12px; font-weight: 600;
+      cursor: pointer; border: 1px solid transparent; transition: all 0.15s;
+    }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-secondary { background: #334155; color: #fff; border-color: #475569; }
+    .btn-secondary:hover:not(:disabled) { background: #475569; }
+    .btn-warning { background: #d97706; color: #fff; }
+    .btn-warning:hover:not(:disabled) { background: #f59e0b; }
+    .btn-success { background: #059669; color: #fff; }
+    .btn-success:hover:not(:disabled) { background: #10b981; }
+    .btn-primary { background: #2563eb; color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: #3b82f6; }
+
+    .grid-top { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; }
+    @media (max-width: 768px) { .grid-top { grid-template-columns: 1fr; } }
+
+    .dropzone {
+      border: 2px dashed var(--border); background: rgba(30, 41, 59, 0.5);
+      border-radius: 8px; padding: 24px; text-align: center; cursor: pointer;
+    }
+    .dropzone:hover, .dropzone.dragover { border-color: #3b82f6; background: rgba(30, 41, 59, 0.9); }
+    .card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+    .select-input, .text-input {
+      width: 100%; background: var(--bg-dark); border: 1px solid var(--border);
+      color: #fff; padding: 8px 10px; border-radius: 6px; font-size: 13px;
+    }
+    .stats-bar { display: flex; justify-content: space-between; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); font-size: 12px; color: var(--text-muted); }
+
+    .cat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); gap: 8px; margin-top: 10px; }
+    .cat-btn {
+      background: var(--bg-dark); border: 1px solid var(--border); border-radius: 6px;
+      padding: 10px; text-align: left; display: flex; flex-direction: column; gap: 6px; color: var(--text-main); cursor: pointer;
+    }
+    .cat-btn.active { border: 2px solid #38bdf8; background: #1e293b; }
+    .cat-btn-top { display: flex; justify-content: space-between; align-items: center; width: 100%; }
+
+    .marker-badge {
+      display: inline-block; padding: 1px 5px; margin: 0 2px; border-radius: 4px;
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 11px; font-weight: 700;
+      cursor: help; border: 1px solid rgba(0,0,0,0.3);
+    }
+    .cat-INVISIBLE   { background: #fee2e2; color: #991b1b; }
+    .cat-NBSP        { background: #fef3c7; color: #92400e; }
+    .cat-HOMOGLYPH   { background: #f3e8ff; color: #6b21a8; }
+    .cat-MOJIBAKE    { background: #ffedd5; color: #9a3412; }
+    .cat-DASH_QUOTE  { background: #dbeafe; color: #1e40af; }
+    .cat-ESCAPE_CTRL { background: #ccfbf1; color: #115e59; }
+    .cat-NON_UNICODE { background: #374151; color: #f9fafb; border-color: #9ca3af; }
+
+    .results-list { max-height: 600px; overflow-y: auto; border-top: 1px solid var(--border); }
+    .row-item { padding: 14px 16px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; }
+    .row-item:hover { background: rgba(255,255,255,0.02); }
+    .row-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+    .code-preview {
+      background: var(--bg-dark); border: 1px solid #1e293b; border-radius: 6px;
+      padding: 10px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 13px; white-space: pre-wrap; word-break: break-all;
+    }
+    .issue-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+    .issue-tag { background: var(--bg-dark); border: 1px solid var(--border); padding: 2px 8px; border-radius: 4px; font-size: 11px; color: var(--text-muted); }
+    .error-banner { display: none; background: #7f1d1d; border: 1px solid #ef4444; color: #fecaca; padding: 12px 16px; border-radius: 8px; font-weight: 600; }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <div id="errorAlert" class="error-banner"></div>
+
+    <header class="header">
+      <div>
+        <h1 class="title">
+          <span id="jsStatusDot" class="status-dot"></span>
+          DB-Import Text-Sanitizer
+        </h1>
+        <p id="jsStatusText" class="subtitle">Initialisiere Umgebung...</p>
+      </div>
+      <div class="btn-group">
+        <button type="button" id="btnDemo" class="btn-secondary">Demo-Daten laden</button>
+        <button type="button" id="btnFixAll" disabled class="btn-warning">Alle Fehler automatisch bereinigen</button>
+        <button type="button" id="btnExport" disabled class="btn-success">Als UTF-8 Datei exportieren</button>
+      </div>
+    </header>
+
+    <section class="grid-top">
+      <div id="dropZone" class="dropzone">
+        <input type="file" id="fileInput" class="hidden" accept=".txt,.csv,.tsv,.sql,.json,.xml,.log">
+        <div style="font-weight: 600; margin-bottom: 4px;">Datei hierher ziehen oder <span style="color: #60a5fa; text-decoration: underline;">durchsuchen</span></div>
+        <div id="fileInfo" style="font-size: 12px; color: var(--text-muted);">Unterstützt: CSV, TXT, SQL, JSON, TSV (100% lokal im Browser)</div>
+      </div>
+
+      <div class="card" style="display: flex; flex-direction: column; justify-content: space-between;">
+        <div>
+          <label for="encodingSelect" style="display:block; font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px;">Quell-Encoding beim Einlesen</label>
+          <select id="encodingSelect" class="select-input">
+            <option value="UTF-8">UTF-8 (Standard)</option>
+            <option value="windows-1252">ANSI / Windows-1252 (Westeuropa)</option>
+            <option value="ISO-8859-1">ISO-8859-1 (Latin-1)</option>
+          </select>
+        </div>
+        <div class="stats-bar">
+          <span>Zeilen gesamt: <strong id="statTotalLines" style="color: #fff;">0</strong></span>
+          <span>Fehlerhafte Zeilen: <strong id="statErrorLines" style="color: #f87171;">0</strong></span>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+        <span style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--text-muted);">Prüfkategorien & Filter (Klicken zum Filtern)</span>
+        <label style="font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+          <input type="checkbox" id="chkOnlyErrors" checked> Nur auffällige Zeilen anzeigen
+        </label>
+      </div>
+      <div id="categoryBadges" class="cat-grid"></div>
+    </section>
+
+    <section class="card" style="padding: 0; overflow: hidden;">
+      <div style="padding: 12px 16px; display: flex; justify-content: space-between; align-items: center;">
+        <span style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--text-muted);">Analyse-Ergebnis & Zeileneditor</span>
+        <span id="filterStatus" style="font-size: 12px; color: var(--text-muted);">Filter: Alle Kategorien</span>
+      </div>
+      <div id="resultsContainer" class="results-list">
+        <div style="padding: 32px; text-align: center; color: var(--text-muted);">
+          Keine Datei geladen. Klicke oben rechts auf <strong>„Demo-Daten laden“</strong> oder ziehe eine Datei in das Feld.
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    window.onerror = function(msg, url, lineNo) {
+      var el = document.getElementById('errorAlert');
+      if (el) {
+        el.style.display = 'block';
+        el.textContent = 'Fehler in Zeile ' + lineNo + ': ' + msg;
+      }
+      return false;
+    };
+
+    (function() {
+      "use strict";
+
+      var CATEGORIES = {
+        INVISIBLE:   { id: 'INVISIBLE',   label: 'Zero-Width / BOM',       desc: 'U+200B, U+FEFF, Soft-Hyphen', css: 'cat-INVISIBLE' },
+        NBSP:        { id: 'NBSP',        label: 'Geschützte Leerzeichen', desc: 'U+00A0, Narrow NBSP',          css: 'cat-NBSP' },
+        HOMOGLYPH:   { id: 'HOMOGLYPH',   label: 'Griechisch / Kyrillisch',desc: 'Täuschende Buchstaben',        css: 'cat-HOMOGLYPH' },
+        MOJIBAKE:    { id: 'MOJIBAKE',    label: 'Encoding / UTF-8-Fehler',desc: 'Mojibake & U+FFFD',            css: 'cat-MOJIBAKE' },
+        DASH_QUOTE:  { id: 'DASH_QUOTE',  label: 'Gedankenstriche / Zitate',desc: 'Typografische Striche/Zitate',css: 'cat-DASH_QUOTE' },
+        ESCAPE_CTRL: { id: 'ESCAPE_CTRL', label: 'Escape / Steuerzeichen', desc: 'Controls & literale \\n',      css: 'cat-ESCAPE_CTRL' },
+        NON_UNICODE: { id: 'NON_UNICODE', label: 'Nicht-Unicode / Exoten', desc: 'Surrogates, Private Use',      css: 'cat-NON_UNICODE' }
+      };
+
+      var HOMOGLYPH_MAP = {
+        '\u0391': { rep: 'A', name: 'Griechisch Alpha' },
+        '\u0392': { rep: 'B', name: 'Griechisch Beta' },
+        '\u0395': { rep: 'E', name: 'Griechisch Epsilon' },
+        '\u0396': { rep: 'Z', name: 'Griechisch Zeta' },
+        '\u0397': { rep: 'H', name: 'Griechisch Eta' },
+        '\u0399': { rep: 'I', name: 'Griechisch Iota' },
+        '\u039A': { rep: 'K', name: 'Griechisch Kappa' },
+        '\u039C': { rep: 'M', name: 'Griechisch My' },
+        '\u039D': { rep: 'N', name: 'Griechisch Ny' },
+        '\u039F': { rep: 'O', name: 'Griechisch Omikron' },
+        '\u03A1': { rep: 'P', name: 'Griechisch Rho' },
+        '\u03A4': { rep: 'T', name: 'Griechisch Tau' },
+        '\u03A5': { rep: 'Y', name: 'Griechisch Ypsilon' },
+        '\u03A7': { rep: 'X', name: 'Griechisch Chi' },
+        '\u03bf': { rep: 'o', name: 'Griechisch Omikron klein' },
+        '\u03B1': { rep: 'a', name: 'Griechisch Alpha klein' },
+        '\u0410': { rep: 'A', name: 'Kyrillisch A' },
+        '\u0412': { rep: 'B', name: 'Kyrillisch Ve' },
+        '\u0415': { rep: 'E', name: 'Kyrillisch Ie' },
+        '\u041A': { rep: 'K', name: 'Kyrillisch Ka' },
+        '\u041C': { rep: 'M', name: 'Kyrillisch Em' },
+        '\u041D': { rep: 'H', name: 'Kyrillisch En' },
+        '\u041E': { rep: 'O', name: 'Kyrillisch O' },
+        '\u0420': { rep: 'P', name: 'Kyrillisch Er' },
+        '\u0421': { rep: 'C', name: 'Kyrillisch Es' },
+        '\u0422': { rep: 'T', name: 'Kyrillisch Te' },
+        '\u0425': { rep: 'X', name: 'Kyrillisch Ha' },
+        '\u0430': { rep: 'a', name: 'Kyrillisch a klein' },
+        '\u0435': { rep: 'e', name: 'Kyrillisch ie klein' },
+        '\u043E': { rep: 'o', name: 'Kyrillisch o klein' },
+        '\u0440': { rep: 'p', name: 'Kyrillisch er klein' },
+        '\u0441': { rep: 'c', name: 'Kyrillisch es klein' },
+        '\u0445': { rep: 'x', name: 'Kyrillisch ha klein' }
+      };
+
+      var MOJIBAKE_PATTERNS = [
+        { seq: '\u00C3\u00A4', rep: '\u00E4', desc: 'UTF-8/ANSI Fehler fuer ae' },
+        { seq: '\u00C3\u00B6', rep: '\u00F6', desc: 'UTF-8/ANSI Fehler fuer oe' },
+        { seq: '\u00C3\u00BC', rep: '\u00FC', desc: 'UTF-8/ANSI Fehler fuer ue' },
+        { seq: '\u00C3\u0084', rep: '\u00C4', desc: 'UTF-8/ANSI Fehler fuer Ae' },
+        { seq: '\u00C3\u0096', rep: '\u00D6', desc: 'UTF-8/ANSI Fehler fuer Oe' },
+        { seq: '\u00C3\u009C', rep: '\u00DC', desc: 'UTF-8/ANSI Fehler fuer Ue' },
+        { seq: '\u00C3\u009F', rep: 'ss',     desc: 'UTF-8/ANSI Fehler fuer sz' },
+        { seq: '\u00C3\u00A9', rep: '\u00E9', desc: 'UTF-8/ANSI Fehler fuer e-akut' },
+        { seq: '\u00E2\u201A\u00AC', rep: '\u20AC', desc: 'UTF-8/ANSI Fehler fuer Euro' },
+        { seq: '\u00E2\u20AC\u201C', rep: '-', desc: 'UTF-8/ANSI Fehler fuer Gedankenstrich' }
+      ];
+
+      var appState = {
+        fileName: 'export.txt',
+        rawBuffer: null,
+        lines: [],
+        analysis: [],
+        activeCategory: null,
+        onlyErrors: true
+      };
+
+      var elDropZone = document.getElementById('dropZone');
+      var elFileInput = document.getElementById('fileInput');
+      var elEncodingSelect = document.getElementById('encodingSelect');
+      var elResultsContainer = document.getElementById('resultsContainer');
+      var elCategoryBadges = document.getElementById('categoryBadges');
+      var elStatTotalLines = document.getElementById('statTotalLines');
+      var elStatErrorLines = document.getElementById('statErrorLines');
+      var elBtnFixAll = document.getElementById('btnFixAll');
+      var elBtnExport = document.getElementById('btnExport');
+      var elBtnDemo = document.getElementById('btnDemo');
+      var elChkOnlyErrors = document.getElementById('chkOnlyErrors');
+      var elFilterStatus = document.getElementById('filterStatus');
+      var elFileInfo = document.getElementById('fileInfo');
+      var elErrorAlert = document.getElementById('errorAlert');
+
+      function showError(msg) {
+        elErrorAlert.textContent = msg;
+        elErrorAlert.style.display = 'block';
+      }
+
+      function toHexCode(cp) {
+        var hex = cp.toString(16).toUpperCase();
+        while (hex.length < 4) hex = '0' + hex;
+        return 'U+' + hex;
+      }
+
+      function escapeHtml(str) {
+        return String(str)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#039;');
+      }
+
+      function analyzeSingleLine(lineText) {
+        var issues = [];
+        var occupiedIndices = {};
+
+        for (var m = 0; m < MOJIBAKE_PATTERNS.length; m++) {
+          var pat = MOJIBAKE_PATTERNS[m];
+          var idx = lineText.indexOf(pat.seq);
+          while (idx !== -1) {
+            issues.push({
+              index: idx, length: pat.seq.length, match: pat.seq,
+              codepoint: 'Multi-Byte', category: 'MOJIBAKE',
+              desc: pat.desc, replacement: pat.rep, badgeText: pat.seq
+            });
+            for (var k = idx; k < idx + pat.seq.length; k++) occupiedIndices[k] = true;
+            idx = lineText.indexOf(pat.seq, idx + pat.seq.length);
+          }
+        }
+
+        var escRegex = /\\(?:n|r|t|0|x[0-9A-Fa-f]{2}|u[0-9A-Fa-f]{4})/g;
+        var match;
+        while ((match = escRegex.exec(lineText)) !== null) {
+          var eIdx = match.index;
+          var seq = match[0];
+          if (!occupiedIndices[eIdx]) {
+            issues.push({
+              index: eIdx, length: seq.length, match: seq,
+              codepoint: 'Literal', category: 'ESCAPE_CTRL',
+              desc: 'Sichtbare Escape-Sequenz (' + seq + ')',
+              replacement: ' ', badgeText: seq
+            });
+            for (var j = eIdx; j < eIdx + seq.length; j++) occupiedIndices[j] = true;
+          }
+        }
+
+        for (var i = 0; i < lineText.length; i++) {
+          if (occupiedIndices[i]) continue;
+
+          var code = lineText.charCodeAt(i);
+          var cp = lineText.codePointAt ? lineText.codePointAt(i) : code;
+          var charLen = cp > 0xFFFF ? 2 : 1;
+          var charStr = lineText.substr(i, charLen);
+          var hex = toHexCode(cp);
+
+          var isHighSurrogate = (code >= 0xD800 && code <= 0xDBFF);
+          var isLowSurrogate = (code >= 0xDC00 && code <= 0xDFFF);
+
+          if (isHighSurrogate) {
+            var nextCode = lineText.charCodeAt(i + 1);
+            if (!(nextCode >= 0xDC00 && nextCode <= 0xDFFF)) {
+              issues.push({
+                index: i, length: 1, match: lineText.charAt(i), codepoint: hex,
+                category: 'NON_UNICODE', desc: 'Ungepaartes High-Surrogate (' + hex + ')',
+                replacement: '', badgeText: '[SURROGATE:' + hex + ']'
+              });
+              continue;
+            }
+          } else if (isLowSurrogate) {
+            var prevCode = lineText.charCodeAt(i - 1);
+            if (!(prevCode >= 0xD800 && prevCode <= 0xDBFF)) {
+              issues.push({
+                index: i, length: 1, match: lineText.charAt(i), codepoint: hex,
+                category: 'NON_UNICODE', desc: 'Ungepaartes Low-Surrogate (' + hex + ')',
+                replacement: '', badgeText: '[SURROGATE:' + hex + ']'
+              });
+              continue;
+            }
+          }
+
+          if (cp === 0x200B || cp === 0x200C || cp === 0x200D || cp === 0x2060 || cp === 0xFEFF || cp === 0x00AD) {
+            var names = {
+              0x200B: 'Zero-Width Space',
+              0x200C: 'Zero-Width Non-Joiner',
+              0x200D: 'Zero-Width Joiner',
+              0x2060: 'Word Joiner',
+              0xFEFF: 'Byte-Order-Mark (BOM)',
+              0x00AD: 'Soft Hyphen'
+            };
+            issues.push({
+              index: i, length: charLen, match: charStr, codepoint: hex,
+              category: 'INVISIBLE', desc: names[cp] + ' (' + hex + ')',
+              replacement: '', badgeText: '[' + (cp === 0xFEFF ? 'BOM' : 'ZWSP') + ':' + hex + ']'
+            });
+          } else if (cp === 0x00A0 || cp === 0x202F || cp === 0x2007 || (cp >= 0x2000 && cp <= 0x200A)) {
+            issues.push({
+              index: i, length: charLen, match: charStr, codepoint: hex,
+              category: 'NBSP', desc: 'Geschütztes Leerzeichen (' + hex + ')',
+              replacement: ' ', badgeText: '[NBSP:' + hex + ']'
+            });
+          } else if (cp === 0xFFFD) {
+            issues.push({
+              index: i, length: charLen, match: charStr, codepoint: hex,
+              category: 'MOJIBAKE', desc: 'Ungültiges UTF-8 Byte (Replacement Char ' + hex + ')',
+              replacement: '?', badgeText: '[UTF8-ERR:' + hex + ']'
+            });
+          } else if (cp === 0x2013 || cp === 0x2014 || cp === 0x2015 || cp === 0x2212) {
+            issues.push({
+              index: i, length: charLen, match: charStr, codepoint: hex,
+              category: 'DASH_QUOTE', desc: 'Gedanken-/Minusstrich (' + hex + ')',
+              replacement: '-', badgeText: charStr + ' (' + hex + ')'
+            });
+          } else if (cp === 0x2018 || cp === 0x2019 || cp === 0x201A || cp === 0x201C || cp === 0x201D || cp === 0x201E || cp === 0x00AB || cp === 0x00BB) {
+            var rep = (cp === 0x2018 || cp === 0x2019 || cp === 0x201A) ? "'" : '"';
+            issues.push({
+              index: i, length: charLen, match: charStr, codepoint: hex,
+              category: 'DASH_QUOTE', desc: 'Typografisches Anführungszeichen (' + hex + ')',
+              replacement: rep, badgeText: charStr
+            });
+          } else if ((cp >= 0x0000 && cp <= 0x001F && cp !== 0x0009) || (cp >= 0x007F && cp <= 0x009F)) {
+            issues.push({
+              index: i, length: charLen, match: charStr, codepoint: hex,
+              category: 'ESCAPE_CTRL', desc: 'Binäres Steuerzeichen (' + hex + ')',
+              replacement: '', badgeText: '[CTRL:' + hex + ']'
+            });
+          } else if (HOMOGLYPH_MAP[charStr]) {
+            var info = HOMOGLYPH_MAP[charStr];
+            issues.push({
+              index: i, length: charLen, match: charStr, codepoint: hex,
+              category: 'HOMOGLYPH', desc: info.name + ' (' + hex + ') statt Latein "' + info.rep + '"',
+              replacement: info.rep, badgeText: charStr + ' [' + hex + ']'
+            });
+          } else if ((cp >= 0x0370 && cp <= 0x03FF) || (cp >= 0x0400 && cp <= 0x04FF)) {
+            issues.push({
+              index: i, length: charLen, match: charStr, codepoint: hex,
+              category: 'HOMOGLYPH', desc: 'Griechisches/Kyrillisches Zeichen (' + hex + ')',
+              replacement: '?', badgeText: charStr + ' [' + hex + ']'
+            });
+          } else if (
+            cp === 0xFFFE || cp === 0xFFFF ||
+            (cp >= 0xFDD0 && cp <= 0xFDEF) ||
+            (cp >= 0xE000 && cp <= 0xF8FF) ||
+            (cp > 0x00FF && cp !== 0x20AC)
+          ) {
+            var isNonChar = (cp === 0xFFFE || cp === 0xFFFF || (cp >= 0xFDD0 && cp <= 0xFDEF));
+            issues.push({
+              index: i, length: charLen, match: charStr, codepoint: hex,
+              category: 'NON_UNICODE',
+              desc: isNonChar ? 'Nicht-Unicode-konformes Non-Character (' + hex + ')' : 'Sonderzeichen ausserhalb ASCII/Latin-1 (' + hex + ')',
+              replacement: '', badgeText: charStr + ' [' + hex + ']'
+            });
+          }
+
+          if (charLen === 2) i++;
+        }
+
+        issues.sort(function(a, b) { return a.index - b.index; });
+        return issues;
+      }
+
+      function runFullAnalysis() {
+        appState.analysis = [];
+        for (var i = 0; i < appState.lines.length; i++) {
+          appState.analysis.push({
+            lineNumber: i + 1,
+            text: appState.lines[i],
+            issues: analyzeSingleLine(appState.lines[i])
+          });
+        }
+        renderDashboard();
+        renderResults();
+      }
+
+      function buildHighlightedLineHtml(lineText, issues) {
+        if (!issues.length) return escapeHtml(lineText);
+        var html = '';
+        var cursor = 0;
+        for (var i = 0; i < issues.length; i++) {
+          var iss = issues[i];
+          if (iss.index > cursor) {
+            html += escapeHtml(lineText.slice(cursor, iss.index));
+          }
+          var catCss = CATEGORIES[iss.category] ? CATEGORIES[iss.category].css : 'cat-NON_UNICODE';
+          var tooltip = iss.desc + ' | Ersatz: "' + (iss.replacement || 'löschen') + '"';
+          html += '<span class="marker-badge ' + catCss + '" title="' + escapeHtml(tooltip) + '">' + escapeHtml(iss.badgeText) + '</span>';
+          cursor = iss.index + iss.length;
+        }
+        if (cursor < lineText.length) {
+          html += escapeHtml(lineText.slice(cursor));
+        }
+        return html;
+      }
+
+      function getAutoFixedLineText(lineText, issues) {
+        if (!issues.length) return lineText;
+        var result = '';
+        var cursor = 0;
+        for (var i = 0; i < issues.length; i++) {
+          var iss = issues[i];
+          if (iss.index > cursor) {
+            result += lineText.slice(cursor, iss.index);
+          }
+          result += iss.replacement;
+          cursor = iss.index + iss.length;
+        }
+        if (cursor < lineText.length) {
+          result += lineText.slice(cursor);
+        }
+        return result;
+      }
+
+      function renderDashboard() {
+        var counts = {};
+        var catKeys = Object.keys(CATEGORIES);
+        for (var k = 0; k < catKeys.length; k++) counts[catKeys[k]] = 0;
+
+        var errorLinesCount = 0;
+        for (var i = 0; i < appState.analysis.length; i++) {
+          var row = appState.analysis[i];
+          if (row.issues.length > 0) errorLinesCount++;
+          for (var j = 0; j < row.issues.length; j++) {
+            var catId = row.issues[j].category;
+            counts[catId] = (counts[catId] || 0) + 1;
+          }
+        }
+
+        elStatTotalLines.textContent = String(appState.lines.length);
+        elStatErrorLines.textContent = String(errorLinesCount);
+        elBtnFixAll.disabled = (errorLinesCount === 0);
+        elBtnExport.disabled = (appState.lines.length === 0);
+
+        var badgesHtml = '';
+        for (var c = 0; c < catKeys.length; c++) {
+          var cat = CATEGORIES[catKeys[c]];
+          var count = counts[cat.id] || 0;
+          var isActive = (appState.activeCategory === cat.id);
+          badgesHtml += '<button type="button" data-cat="' + cat.id + '" class="cat-btn ' + (isActive ? 'active' : '') + '">' +
+            '<div class="cat-btn-top">' +
+              '<span class="marker-badge ' + cat.css + '">' + escapeHtml(cat.label) + '</span>' +
+              '<strong style="font-size:14px; color:' + (count > 0 ? '#fff' : '#64748b') + '">' + count + '</strong>' +
+            '</div>' +
+            '<span style="font-size:11px; color:var(--text-muted);">' + escapeHtml(cat.desc) + '</span>' +
+          '</button>';
+        }
+        elCategoryBadges.innerHTML = badgesHtml;
+
+        elFilterStatus.textContent = appState.activeCategory
+          ? 'Filter aktiv: ' + CATEGORIES[appState.activeCategory].label + ' (Klicken zum Aufheben)'
+          : 'Filter: Alle Kategorien';
+      }
+
+      function renderResults() {
+        if (appState.analysis.length === 0) return;
+
+        var filtered = [];
+        for (var i = 0; i < appState.analysis.length; i++) {
+          var r = appState.analysis[i];
+          if (appState.onlyErrors && r.issues.length === 0) continue;
+          if (appState.activeCategory) {
+            var hasCat = false;
+            for (var j = 0; j < r.issues.length; j++) {
+              if (r.issues[j].category === appState.activeCategory) { hasCat = true; break; }
+            }
+            if (!hasCat) continue;
+          }
+          filtered.push(r);
+        }
+
+        if (filtered.length === 0) {
+          elResultsContainer.innerHTML = '<div style="padding:32px; text-align:center; color:#34d399; font-weight:600;">Keine auffälligen Zeilen für die aktuellen Filterkriterien gefunden.</div>';
+          return;
+        }
+
+        var maxRows = Math.min(filtered.length, 500);
+        var html = '';
+        for (var idx = 0; idx < maxRows; idx++) {
+          var row = filtered[idx];
+          var hasIssues = row.issues.length > 0;
+          var lineIdx = row.lineNumber - 1;
+          var highlighted = buildHighlightedLineHtml(row.text, row.issues);
+
+          var tagsHtml = '';
+          for (var t = 0; t < row.issues.length; t++) {
+            var iss = row.issues[t];
+            tagsHtml += '<span class="issue-tag"><strong>Pos ' + (iss.index + 1) + ':</strong> ' + escapeHtml(iss.desc) + '</span>';
+          }
+
+          html += '<div class="row-item">' +
+            '<div class="row-header">' +
+              '<div style="display:flex; align-items:center; gap:10px;">' +
+                '<span style="background:var(--bg-dark); border:1px solid var(--border); padding:2px 8px; border-radius:4px; font-family:monospace; font-size:12px;">Zeile ' + row.lineNumber + '</span>' +
+                (hasIssues
+                  ? '<span style="color:#f87171; font-weight:700; font-size:12px;">' + row.issues.length + ' Problem(e)</span>'
+                  : '<span style="color:#34d399; font-size:12px;">OK</span>') +
+              '</div>' +
+              '<div class="btn-group">' +
+                (hasIssues ? '<button type="button" data-action="autofix" data-idx="' + lineIdx + '" class="btn-warning" style="padding:4px 10px;">Zeile auto-bereinigen</button>' : '') +
+                '<button type="button" data-action="toggleedit" data-idx="' + lineIdx + '" class="btn-secondary" style="padding:4px 10px;">Manuell bearbeiten</button>' +
+              '</div>' +
+            '</div>' +
+            '<div class="code-preview">' + (highlighted || '<span style="color:#64748b; font-style:italic;">(Leerzeile)</span>') + '</div>' +
+            (hasIssues ? '<div class="issue-tags">' + tagsHtml + '</div>' : '') +
+            '<div id="editbox-' + lineIdx + '" class="hidden" style="margin-top:6px; display:flex; flex-direction:column; gap:8px;">' +
+              '<input type="text" id="input-' + lineIdx + '" class="text-input" value="' + escapeHtml(row.text) + '">' +
+              '<div style="display:flex; justify-content:flex-end; gap:8px;">' +
+                '<button type="button" data-action="toggleedit" data-idx="' + lineIdx + '" class="btn-secondary">Abbrechen</button>' +
+                '<button type="button" data-action="saveedit" data-idx="' + lineIdx + '" class="btn-primary">Übernehmen & Prüfen</button>' +
+              '</div>' +
+            '</div>' +
+          '</div>';
+        }
+        elResultsContainer.innerHTML = html;
+      }
+
+      elCategoryBadges.addEventListener('click', function(e) {
+        var btn = e.target.closest('button[data-cat]');
+        if (!btn) return;
+        var catId = btn.getAttribute('data-cat');
+        appState.activeCategory = (appState.activeCategory === catId) ? null : catId;
+        renderDashboard();
+        renderResults();
+      });
+
+      elResultsContainer.addEventListener('click', function(e) {
+        var btn = e.target.closest('button[data-action]');
+        if (!btn) return;
+        var action = btn.getAttribute('data-action');
+        var lineIdx = parseInt(btn.getAttribute('data-idx'), 10);
+
+        if (action === 'autofix') {
+          var row = appState.analysis[lineIdx];
+          if (row) {
+            appState.lines[lineIdx] = getAutoFixedLineText(row.text, row.issues);
+            runFullAnalysis();
+          }
+        } else if (action === 'toggleedit') {
+          var box = document.getElementById('editbox-' + lineIdx);
+          if (box) box.classList.toggle('hidden');
+        } else if (action === 'saveedit') {
+          var input = document.getElementById('input-' + lineIdx);
+          if (input) {
+            appState.lines[lineIdx] = input.value;
+            runFullAnalysis();
+          }
+        }
+      });
+
+      elBtnDemo.addEventListener('click', function() {
+        appState.fileName = 'demo_import.csv';
+        appState.rawBuffer = null;
+        appState.lines = [
+          "\uFEFFID;Name;Abteilung;Kommentar;Preis",
+          "101;Max Mustermann;IT-Operations;Saubere Referenzzeile ohne Fehler;120.00",
+          "102;\u039Cax \u039Custermann;Sales;Achtung: Griechisches My (\u039C) statt Lateinischem M!;99.50",
+          "103;J\u00C3\u00BCrgen M\u00C3\u00BCller;Finanzen;Typischer UTF-8 als ANSI gelesener Mojibake-Fehler (\u00C3\u00BC);250.00",
+          "104;Anna\u00A0Schmidt;HR\u202FTeam;Geschütztes Leerzeichen (U+00A0 & U+202F) aus Word/Web kopiert;180.00",
+          "105;Zero\u200BWidth\u200CTest;DevOps;Unsichtbarer Zero-Width-Space (U+200B) mitten im Wort;310.00",
+          "106;Projekt \u2013 Phase 1;Management;Gedankenstrich (\u2013) und \u201Etypografische Zitate\u201C aus Outlook;450.00",
+          "107;Zeilenumbruch\\nTest;Support;Sichtbares Escape-Zeichen (\\n) und binäres Steuerzeichen \u0007 (BEL);75.00",
+          "108;Kyrillisch \u0421\u0442\u0435\u0444\u0430\u043D;Logistik;Kyrillische Buchstaben & Replacement Char \uFFFD;110.00",
+          "109;PrivateUse \uE000 Test;R&D;Nicht-standardisiertes Unicode-Zeichen aus Private Use Area (U+E000);500.00"
+        ];
+        elFileInfo.textContent = 'Geladen: Demo-Datensatz (10 Zeilen mit allen 7 Fehlerkategorien)';
+        runFullAnalysis();
+      });
+
+      elBtnFixAll.addEventListener('click', function() {
+        for (var i = 0; i < appState.analysis.length; i++) {
+          var row = appState.analysis[i];
+          appState.lines[i] = getAutoFixedLineText(row.text, row.issues);
+        }
+        runFullAnalysis();
+      });
+
+      elBtnExport.addEventListener('click', function() {
+        try {
+          var content = appState.lines.join('\n');
+          var blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+          var url = URL.createObjectURL(blob);
+          var a = document.createElement('a');
+          var cleanName = appState.fileName.replace(/(\.[^.]+)$/, '_sanitized$1');
+          a.href = url;
+          a.download = (cleanName === appState.fileName) ? (appState.fileName + '_sanitized.txt') : cleanName;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        } catch (err) {
+          showError('Export fehlgeschlagen: ' + err.message);
+        }
+      });
+
+      function decodeAndAnalyzeBuffer() {
+        if (!appState.rawBuffer) return;
+        try {
+          var encoding = elEncodingSelect.value;
+          var decoder = new TextDecoder(encoding, { fatal: false });
+          var text = decoder.decode(appState.rawBuffer);
+          appState.lines = text.split(/\r?\n/);
+          runFullAnalysis();
+        } catch (err) {
+          showError('Fehler beim Decodieren: ' + err.message);
+        }
+      }
+
+      function handleFileUpload(file) {
+        if (!file) return;
+        appState.fileName = file.name;
+        elFileInfo.textContent = 'Geladen: ' + file.name + ' (' + (file.size / 1024).toFixed(1) + ' KB)';
+        var reader = new FileReader();
+        reader.onload = function(e) {
+          appState.rawBuffer = e.target.result;
+          decodeAndAnalyzeBuffer();
+        };
+        reader.onerror = function() { showError('Datei konnte nicht gelesen werden.'); };
+        reader.readAsArrayBuffer(file);
+      }
+
+      elDropZone.addEventListener('click', function() { elFileInput.click(); });
+      elFileInput.addEventListener('change', function(e) { handleFileUpload(e.target.files[0]); });
+      elDropZone.addEventListener('dragover', function(e) { e.preventDefault(); elDropZone.classList.add('dragover'); });
+      elDropZone.addEventListener('dragleave', function() { elDropZone.classList.remove('dragover'); });
+      elDropZone.addEventListener('drop', function(e) {
+        e.preventDefault();
+        elDropZone.classList.remove('dragover');
+        if (e.dataTransfer && e.dataTransfer.files.length) handleFileUpload(e.dataTransfer.files[0]);
+      });
+
+      elEncodingSelect.addEventListener('change', decodeAndAnalyzeBuffer);
+      elChkOnlyErrors.addEventListener('change', function(e) {
+        appState.onlyErrors = e.target.checked;
+        renderResults();
+      });
+
+      renderDashboard();
+      var dot = document.getElementById('jsStatusDot');
+      var txt = document.getElementById('jsStatusText');
+      if (dot) dot.classList.add('ready');
+      if (txt) txt.textContent = 'Engine bereit (100% Standalone / Keine externen Abhängigkeiten)';
+    })();
+  </script>
+</body>
+</html>
